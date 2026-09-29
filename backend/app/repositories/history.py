@@ -14,60 +14,33 @@ def insert_run(window_id, fabric_id, result, note=""):
     finally:
         c.close()
 
-def _dims(row) -> dict:
-    return {
-        "width": row["window_width"] if "window_width" in row.keys() else None,
-        "height": row["window_height"] if "window_height" in row.keys() else None,
-        "fullness": row["window_fullness"] if "window_fullness" in row.keys() else None,
-        "fabric_width": row["fabric_width"] if "fabric_width" in row.keys() else None,
-        "hem_top": row["hem_top"] if "hem_top" in row.keys() else None,
-        "hem_bottom": row["hem_bottom"] if "hem_bottom" in row.keys() else None,
-    }
+_SELECT = """SELECT r.*, w.name window_name, f.name fabric_name,
+                    w.width window_width, w.height window_height, w.fullness window_fullness,
+                    f.fabric_width fabric_width, f.hem_top hem_top, f.hem_bottom hem_bottom
+             FROM calc_runs r
+             LEFT JOIN windows w ON w.id=r.window_id
+             LEFT JOIN fabrics f ON f.id=r.fabric_id"""
+
+
+def _row_to_dict(row):
+    d = dict(row)
+    # 写入即快照：读路径原样返回，不按窗宽或当前默认损耗重算。
+    d["result"] = json.loads(d.pop("result_json"))
+    return d
 
 
 def get_run(run_id):
-    from app.services.header_open import detail_view_header, list_view_header
-from app.repositories import settings_repo
-
     c = connect()
     try:
-        row = c.execute(
-            """SELECT r.*, w.name window_name, f.name fabric_name,
-                   w.width window_width, w.height window_height, w.fullness window_fullness,
-                   f.fabric_width fabric_width, f.hem_top hem_top, f.hem_bottom hem_bottom
-            FROM calc_runs r
-            LEFT JOIN windows w ON w.id=r.window_id LEFT JOIN fabrics f ON f.id=r.fabric_id
-            WHERE r.id=?""", (run_id,)).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        raw = json.loads(d.pop("result_json"))
-        live = float((settings_repo.get_all() or {}).get("header_tape_joint_loss") or 0)
-        d["result"] = detail_view_header(raw, _dims(row), live)
-        return d
+        row = c.execute(_SELECT + " WHERE r.id=?", (run_id,)).fetchone()
+        return _row_to_dict(row) if row else None
     finally:
         c.close()
 
 def list_runs(limit=50):
-    from app.services.header_open import detail_view_header, list_view_header
-from app.repositories import settings_repo
-
     c = connect()
     try:
-        rows = c.execute(
-            """SELECT r.*, w.name window_name, f.name fabric_name,
-                   w.width window_width, w.height window_height, w.fullness window_fullness,
-                   f.fabric_width fabric_width, f.hem_top hem_top, f.hem_bottom hem_bottom
-            FROM calc_runs r
-            LEFT JOIN windows w ON w.id=r.window_id LEFT JOIN fabrics f ON f.id=r.fabric_id
-            ORDER BY r.id DESC LIMIT ?""", (limit,)).fetchall()
-        out = []
-        for row in rows:
-            d = dict(row)
-            raw = json.loads(d.pop("result_json"))
-            live = float((settings_repo.get_all() or {}).get("header_tape_joint_loss") or 0)
-            d["result"] = list_view_header(raw, _dims(row), live)
-            out.append(d)
-        return out
+        rows = c.execute(_SELECT + " ORDER BY r.id DESC LIMIT ?", (limit,)).fetchall()
+        return [_row_to_dict(row) for row in rows]
     finally:
         c.close()
