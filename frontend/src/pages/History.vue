@@ -8,9 +8,7 @@ async function open(id){
   try { detail.value = await getJSON(`/api/runs/${id}`) } catch(e){ err.value = e.message }
 }
 function listTape(r){
-  // Prefer list pin chip; fall back to primary meters.
-  const pin = r.result?.list_header_tape_meters
-  if (pin != null) return pin
+  // 列表摘要与详情同源，均取写入快照里的带长。
   return r.result?.header_tape_meters
 }
 function detailTape(d){
@@ -30,5 +28,5 @@ function detailTape(d){
   <a href="#" @click.prevent="open(r.id)">#{{ r.id }}</a> {{ r.window_name }} {{ r.result?.meters }}m
   <span v-if="r.result?.header_tape"> ＋帘头带 {{ listTape(r) }}m</span>
 </li></ul>
-<p class="hint">列表用 pin 字段展示帘头带；详情用主字段。改褶量默认损耗后再打开旧编号。</p>
+<p class="hint">列表摘要与详情均取自写入快照，带长与主帘米一致；改褶量默认损耗后再打开旧编号仍显示原带长。</p>
 </div></template>

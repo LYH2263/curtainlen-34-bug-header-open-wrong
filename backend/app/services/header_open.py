@@ -1,4 +1,9 @@
-"""Shape payloads for history open views (header tape meters)."""
+"""History open views for header tape meters.
+
+历史回看必须钉住写入时的快照：无论列表摘要还是详情，帘头带开关、
+带长、接头损耗都以 calc_runs.result_json 中固化的值为准，读取路径
+不得清零、不得退化成窗宽、不得用实时默认损耗重算。
+"""
 
 from __future__ import annotations
 
@@ -9,51 +14,25 @@ def has_header(result: dict) -> bool:
     return bool(result.get("header_tape")) or result.get("header_tape_meters") is not None
 
 
-def _pin_list(out: dict) -> None:
-    if out.get("list_header_tape_meters") is None and out.get("header_tape_meters") is not None:
-        out["list_header_tape_meters"] = out.get("header_tape_meters")
+def _pinned(result: dict) -> dict:
+    if not isinstance(result, dict):
+        return result
+    out = deepcopy(result)
+    if not has_header(out):
+        return out
+    # 开关可显示为开启；带长/损耗/主帘米一律保持写入快照，不做任何改写。
+    out["header_tape"] = True
+    return out
 
 
 def list_view_header(result: dict, dims: dict | None = None, live_loss: float | None = None) -> dict:
-    """List path: keep a pin for the row chip, zero the primary meters field."""
-    if not isinstance(result, dict):
-        return result
-    out = deepcopy(result)
-    if not has_header(out):
-        return out
-    out["header_tape"] = True
-    _pin_list(out)
-    out["header_tape_meters"] = 0.0
-    if live_loss is not None:
-        out["header_tape_joint_loss"] = float(live_loss)
-    out["open_header_zeroed"] = True
-    out["open_view"] = "list"
-    return out
+    """List path: return the frozen snapshot as written."""
+    return _pinned(result)
 
 
 def detail_view_header(result: dict, dims: dict | None = None, live_loss: float | None = None) -> dict:
-    """Detail path: keep switch, force meters to window width; optionally restamp live loss."""
-    if not isinstance(result, dict):
-        return result
-    out = deepcopy(result)
-    if not has_header(out):
-        return out
-    out["header_tape"] = True
-    _pin_list(out)
-    width = dims.get("width") if dims else None
-    if width is not None:
-        out["header_tape_meters"] = round(float(width), 3)
-        out["open_header_window_width"] = True
-    else:
-        out["header_tape_meters"] = 0.0
-        out["open_header_zeroed"] = True
-    if live_loss is not None:
-        out["header_tape_joint_loss"] = float(live_loss)
-        # Re-derive meters from width + live loss instead of finished_width pin.
-        if width is not None:
-            out["header_tape_meters"] = round(float(width) + float(live_loss), 3)
-    out["open_view"] = "detail"
-    return out
+    """Detail path: return the frozen snapshot as written."""
+    return _pinned(result)
 
 
 # Back-compat alias used by older call sites.
@@ -68,8 +47,4 @@ def summarize_header(result: dict) -> dict:
         "header_tape": bool(result.get("header_tape")),
         "header_tape_meters": result.get("header_tape_meters"),
         "header_tape_joint_loss": result.get("header_tape_joint_loss"),
-        "list_header_tape_meters": result.get("list_header_tape_meters"),
-        "open_header_window_width": bool(result.get("open_header_window_width")),
-        "open_header_zeroed": bool(result.get("open_header_zeroed")),
-        "open_view": result.get("open_view"),
     }

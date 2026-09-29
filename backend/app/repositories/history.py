@@ -25,10 +25,14 @@ def _dims(row) -> dict:
     }
 
 
-def get_run(run_id):
-    from app.services.header_open import detail_view_header, list_view_header
-from app.repositories import settings_repo
+def _row_to_dict(row):
+    d = dict(row)
+    # 原样返回写入快照；帘头带带长/损耗/主帘米不做任何读取期改写。
+    d["result"] = json.loads(d.pop("result_json"))
+    return d
 
+
+def get_run(run_id):
     c = connect()
     try:
         row = c.execute(
@@ -40,18 +44,11 @@ from app.repositories import settings_repo
             WHERE r.id=?""", (run_id,)).fetchone()
         if not row:
             return None
-        d = dict(row)
-        raw = json.loads(d.pop("result_json"))
-        live = float((settings_repo.get_all() or {}).get("header_tape_joint_loss") or 0)
-        d["result"] = detail_view_header(raw, _dims(row), live)
-        return d
+        return _row_to_dict(row)
     finally:
         c.close()
 
 def list_runs(limit=50):
-    from app.services.header_open import detail_view_header, list_view_header
-from app.repositories import settings_repo
-
     c = connect()
     try:
         rows = c.execute(
@@ -61,13 +58,6 @@ from app.repositories import settings_repo
             FROM calc_runs r
             LEFT JOIN windows w ON w.id=r.window_id LEFT JOIN fabrics f ON f.id=r.fabric_id
             ORDER BY r.id DESC LIMIT ?""", (limit,)).fetchall()
-        out = []
-        for row in rows:
-            d = dict(row)
-            raw = json.loads(d.pop("result_json"))
-            live = float((settings_repo.get_all() or {}).get("header_tape_joint_loss") or 0)
-            d["result"] = list_view_header(raw, _dims(row), live)
-            out.append(d)
-        return out
+        return [_row_to_dict(row) for row in rows]
     finally:
         c.close()
